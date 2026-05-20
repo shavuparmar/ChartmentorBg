@@ -47,7 +47,7 @@ app.use(
 );
 
 // Handle preflight requests (VERY IMPORTANT)
-app.options("*", cors());
+app.options("/*", cors());
 
 /* -----------------------------
    BASIC MIDDLEWARES
