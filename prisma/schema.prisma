@@ -1,0 +1,141 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+ url      = env("DATABASE_URL")
+   directUrl = env("DIRECT_URL")
+ 
+
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+model User {
+  id             String         @id @default(uuid())
+  firstName      String
+  lastName       String
+  email          String         @unique
+  password       String
+  role           Role           @default(STUDENT)
+  isVerified     Boolean        @default(false)
+  resetToken     String?
+  resetTokenExpiry DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  membership     Membership?
+  payments       Payment[]
+  invoices       Invoice[]
+  supportTickets SupportTicket[]
+  supportReplies SupportReply[]
+  notifications  NotificationRead[]
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  status    String   @default("ACTIVE") // ACTIVE, INACTIVE, CANCELLED
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Payment {
+  id              String   @id @default(uuid())
+  userId          String
+  razorpayOrderId String   @unique
+  razorpayPaymentId String? @unique
+  amount          Float
+  status          String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  planId          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  user            User     @relation(fields: [userId], references: [id])
+  plan            Plan?    @relation(fields: [planId], references: [id])
+  invoice         Invoice?
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  paymentId     String   @unique
+  userId        String
+  pdfUrl        String?
+  amount        Float
+  createdAt     DateTime @default(now())
+  
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  createdAt DateTime @default(now())
+  
+  readBy    NotificationRead[]
+}
+
+model NotificationRead {
+  id             String   @id @default(uuid())
+  userId         String
+  notificationId String
+  isRead         Boolean  @default(false)
+  
+  user           User         @relation(fields: [userId], references: [id])
+  notification   Notification @relation(fields: [notificationId], references: [id])
+
+  @@unique([userId, notificationId])
+}
+
+model SupportTicket {
+  id        String   @id @default(uuid())
+  userId    String
+  subject   String
+  status    String   @default("OPEN") // OPEN, IN_PROGRESS, SOLVED, CLOSED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User           @relation(fields: [userId], references: [id])
+  replies   SupportReply[]
+}
+
+model SupportReply {
+  id        String   @id @default(uuid())
+  ticketId  String
+  userId    String?
+  message   String
+  createdAt DateTime @default(now())
+  
+  ticket    SupportTicket  @relation(fields: [ticketId], references: [id])
+  user      User?          @relation(fields: [userId], references: [id])
+}
+
+model Settings {
+  id              String   @id @default(uuid())
+  discordLink     String?
+  telegramLink    String?
+  updatedAt       DateTime @updatedAt
+}
+
+model Plan {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  description String?
+  features    String?  // JSON string or comma-separated
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  payments    Payment[]
+}
