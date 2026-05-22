@@ -2,53 +2,144 @@ const prisma = require('../utils/prisma');
 const { hashPassword, comparePassword } = require('../utils/hash');
 const { generateToken } = require('../utils/jwt');
 const crypto = require('crypto');
-// Assuming resend is initialized somewhere, we can mock it here for now or implement it fully.
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
+const { sendOTPEmail, sendPasswordResetEmail } = require('../services/email.service');
+
+const generateOTP = () => {
+  return crypto.randomInt(100000, 999999).toString();
+};
 
 const register = async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
     
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User already exists' });
+    let user = await prisma.user.findUnique({ where: { email } });
+    
+    if (user) {
+      if (user.isVerified) {
+        return res.status(400).json({ success: false, message: 'User already exists and is verified. Please login.' });
+      }
+      
+      // Enforce 60-second cooldown for existing unverified users
+      if (user.updatedAt && (Date.now() - new Date(user.updatedAt).getTime() < 60000)) {
+        return res.status(429).json({ success: false, message: 'Please wait 60 seconds before requesting a new OTP.' });
+      }
     }
 
     const hashedPassword = await hashPassword(password);
-    
-    const user = await prisma.user.create({
-      data: {
-        firstName,
-        lastName,
-        email,
-        password: hashedPassword,
-      }
-    });
+    const otp = generateOTP();
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    const otpExpiry = new Date(Date.now() + 15 * 60000); // 15 mins
 
-    const token = generateToken({ id: user.id, role: 'student' });
-
-    // Send verification email via resend
-    try {
-      await resend.emails.send({
-        from: 'ChartMentor <noreply@chartmentor.com>', // Requires a verified domain in Resend
-        to: email,
-        subject: 'Welcome to ChartMentor - Verify your Email',
-        html: `<p>Hi ${firstName},</p><p>Welcome to ChartMentor! Please click <a href="${process.env.FRONTEND_URL}/verify-email?token=${token}">here</a> to verify your email.</p>`
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          firstName,
+          lastName,
+          email,
+          password: hashedPassword,
+          resetToken: hashedOTP,
+          resetTokenExpiry: otpExpiry
+        }
       });
-    } catch (emailError) {
-      console.error("Failed to send welcome email", emailError);
+    } else {
+      user = await prisma.user.update({
+        where: { email },
+        data: {
+          firstName,
+          lastName,
+          password: hashedPassword, // Overwrite password if they register again before verifying
+          resetToken: hashedOTP,
+          resetTokenExpiry: otpExpiry
+        }
+      });
     }
+
+    await sendOTPEmail(email, firstName, otp);
     
     res.status(201).json({
       success: true,
+      message: 'OTP sent to email successfully. Please verify to complete registration.',
+      email: user.email
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: 'Email is already verified' });
+    }
+
+    // 60-second cooldown enforcement
+    if (user.updatedAt && (Date.now() - new Date(user.updatedAt).getTime() < 60000)) {
+      return res.status(429).json({ success: false, message: 'Please wait 60 seconds before requesting a new OTP.' });
+    }
+
+    const otp = generateOTP();
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    const otpExpiry = new Date(Date.now() + 15 * 60000); // 15 mins
+
+    await prisma.user.update({
+      where: { email },
       data: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        token
+        resetToken: hashedOTP,
+        resetTokenExpiry: otpExpiry
       }
+    });
+
+    await sendOTPEmail(email, user.firstName, otp);
+
+    res.json({
+      success: true,
+      message: 'A new OTP has been sent to your email.'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const verifyEmail = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: 'Email is already verified' });
+    }
+
+    const hashedInputOTP = crypto.createHash('sha256').update(otp).digest('hex');
+
+    if (user.resetToken !== hashedInputOTP || new Date() > user.resetTokenExpiry) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+    }
+
+    // Invalidate OTP immediately upon success
+    await prisma.user.update({
+      where: { email },
+      data: {
+        isVerified: true,
+        resetToken: null,
+        resetTokenExpiry: null
+      }
+    });
+
+    // We do NOT generate a token here, because we want the user to log in manually!
+    res.json({
+      success: true,
+      message: 'Email verified successfully. You can now login.'
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -67,6 +158,10 @@ const login = async (req, res) => {
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    if (!user.isVerified && user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Please verify your email before logging in.', unverified: true });
     }
 
     const userRole = user.role === 'ADMIN' ? 'admin' : 'student';
@@ -134,29 +229,23 @@ const forgotPassword = async (req, res) => {
     const user = await prisma.user.findUnique({ where: { email } });
     
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      // Don't leak whether the user exists
+      return res.json({ success: true, message: 'If that email is registered, we have sent a password reset link.' });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
     const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { resetToken, resetTokenExpiry }
+      data: { resetToken: hashedResetToken, resetTokenExpiry }
     });
 
-    try {
-      await resend.emails.send({
-        from: 'ChartMentor <noreply@chartmentor.com>',
-        to: email,
-        subject: 'Password Reset Request',
-        html: `<p>You requested a password reset.</p><p>Click <a href="${process.env.FRONTEND_URL}/student/reset-password?token=${resetToken}">here</a> to reset your password.</p>`
-      });
-    } catch (err) {
-      console.error(err);
-    }
+    const resetLink = `${process.env.FRONTEND_URL}/student/reset-password?token=${resetToken}`;
+    await sendPasswordResetEmail(email, resetLink);
 
-    res.json({ success: true, message: 'Password reset link sent to email' });
+    res.json({ success: true, message: 'If that email is registered, we have sent a password reset link.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -166,9 +255,11 @@ const resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     
+    const hashedResetToken = crypto.createHash('sha256').update(token).digest('hex');
+
     const user = await prisma.user.findFirst({
       where: {
-        resetToken: token,
+        resetToken: hashedResetToken,
         resetTokenExpiry: { gt: new Date() }
       }
     });
@@ -194,4 +285,4 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, adminLogin, getMe, forgotPassword, resetPassword };
+module.exports = { register, resendOTP, verifyEmail, login, adminLogin, getMe, forgotPassword, resetPassword };

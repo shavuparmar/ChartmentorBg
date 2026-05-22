@@ -30,6 +30,7 @@ const createOrder = async (req, res) => {
         userId: req.user.id,
         razorpayOrderId: order.id,
         amount: amount,
+        planId: planId, // Added planId
         status: "PENDING"
       }
     });
@@ -61,24 +62,62 @@ const verifyPayment = async (req, res) => {
         data: {
           razorpayPaymentId: razorpay_payment_id,
           status: "SUCCESS"
-        }
+        },
+        include: { plan: true } // Include plan details
       });
 
-      // Update or create Membership
+      // Update or create Membership (assume lifetime if no duration specified)
       await prisma.membership.upsert({
         where: { userId: payment.userId },
         update: {
           status: "ACTIVE",
           startDate: new Date(),
-          endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)) // 1 year membership
+          endDate: null // Assuming lifetime access for now
         },
         create: {
           userId: payment.userId,
           status: "ACTIVE",
           startDate: new Date(),
-          endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+          endDate: null
         }
       });
+
+      // Fetch user details for invoice and emails
+      const user = await prisma.user.findUnique({ where: { id: payment.userId } });
+
+      // Create in-app notification
+      const notification = await prisma.notification.create({
+        data: {
+          title: 'Membership Activated! 🎉',
+          message: `Your payment of ₹${payment.amount} for the ${payment.plan?.name || 'Premium'} plan was successful. Welcome to the community!`
+        }
+      });
+      
+      await prisma.notificationRead.create({
+        data: {
+          userId: user.id,
+          notificationId: notification.id
+        }
+      });
+
+      // Broadcast real-time notification
+      const io = req.app.get('io');
+      if (io) {
+        // Find specific user's sockets if they are connected, or broadcast to all students
+        io.to('students').emit('new_notification', notification);
+      }
+
+      // Send Membership Confirmation Email asynchronously
+      const { sendMembershipConfirmation } = require('../services/email.service');
+      const settings = await prisma.settings.findFirst();
+      sendMembershipConfirmation(
+        user.email,
+        user.firstName,
+        payment.plan?.name || 'Premium Membership',
+        payment.amount,
+        settings?.discordLink,
+        settings?.telegramLink
+      ).catch(console.error);
 
       // Generate invoice
       const invoiceNumber = `INV-${Date.now()}`;
@@ -91,8 +130,6 @@ const verifyPayment = async (req, res) => {
         }
       });
 
-      // Assuming user details are needed for PDF
-      const user = await prisma.user.findUnique({ where: { id: payment.userId } });
       const invoiceData = {
         invoiceNumber,
         date: new Date(),

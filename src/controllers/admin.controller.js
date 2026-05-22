@@ -68,6 +68,12 @@ const sendNotification = async (req, res) => {
       data: userNotifications
     });
     
+    // Emit real-time notification to all connected students
+    const io = req.app.get('io');
+    if (io) {
+      io.to('students').emit('new_notification', notification);
+    }
+    
     res.json({ success: true, data: notification });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

@@ -2,6 +2,7 @@ const express = require('express');
 const {
   getDashboard,
   getNotifications,
+  markNotificationRead,
   getSettings,
   createSupportTicket,
   getSupportTickets,
@@ -14,6 +15,7 @@ router.use(authMiddleware);
 
 router.get('/dashboard', getDashboard);
 router.get('/notifications', getNotifications);
+router.put('/notifications/:id/read', markNotificationRead);
 router.get('/settings', getSettings);
 router.get('/support-tickets', getSupportTickets);
 router.post('/support-tickets', createSupportTicket);

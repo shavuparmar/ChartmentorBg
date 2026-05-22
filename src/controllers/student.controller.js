@@ -5,9 +5,7 @@ const getDashboard = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: {
-        membership: true,
-        payments: true,
-        invoices: true,
+        membership: true
       }
     });
     
@@ -104,9 +102,29 @@ const replySupportTicket = async (req, res) => {
   }
 };
 
+const markNotificationRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // id is notificationId, we need to update NotificationRead where userId = req.user.id
+    const updated = await prisma.notificationRead.updateMany({
+      where: { 
+        userId: req.user.id,
+        notificationId: id
+      },
+      data: { isRead: true }
+    });
+
+    res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getDashboard,
   getNotifications,
+  markNotificationRead,
   getSettings,
   createSupportTicket,
   getSupportTickets,

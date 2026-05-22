@@ -7,6 +7,14 @@ const rateLimit = require("express-rate-limit");
 
 dotenv.config();
 
+// Validate critical environment variables
+const requiredEnvVars = ['DATABASE_URL', 'RESEND_API_KEY', 'JWT_SECRET', 'FRONTEND_URL'];
+const missingVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingVars.length > 0) {
+  console.error(`❌ CRITICAL: Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
+
 const app = express();
 
 /* -----------------------------
@@ -16,7 +24,19 @@ const app = express();
 // Helmet security headers
 app.use(
   helmet({
-    crossOriginResourcePolicy: false
+    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // For React
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        connectSrc: ["'self'", "https:", "http:"], // Adjust according to your needs
+      },
+    },
+    xssFilter: true, // Adds X-XSS-Protection
+    noSniff: true, // Adds X-Content-Type-Options
   })
 );
 
@@ -70,8 +90,10 @@ app.use(morgan("dev"));
 ------------------------------*/
 
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 500, // Limit each IP to 500 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
   message: {
     success: false,
     message: "Too many requests, please try again later"
@@ -118,8 +140,37 @@ app.use((err, req, res, next) => {
    START SERVER
 ------------------------------*/
 
+const http = require('http');
+const { Server } = require('socket.io');
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true
+  }
+});
+
+// Middleware for sockets can go here, but for now we just make io accessible globally
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  console.log('User connected to socket:', socket.id);
+  
+  socket.on('join_student_room', (userId) => {
+    socket.join('students');
+    // If you want user-specific notifications, you can do: socket.join(userId);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
