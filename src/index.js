@@ -47,7 +47,8 @@ app.use(
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "https://chartmentor.vercel.app",
-  "http://localhost:5173"
+  "http://localhost:5173",
+  "https://www.chartmentors.in/"
 ].filter(Boolean);
 
 app.use(
@@ -158,7 +159,7 @@ app.set('io', io);
 
 io.on('connection', (socket) => {
   console.log('User connected to socket:', socket.id);
-  
+
   socket.on('join_student_room', (userId) => {
     socket.join('students');
     // If you want user-specific notifications, you can do: socket.join(userId);
