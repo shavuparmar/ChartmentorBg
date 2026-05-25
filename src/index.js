@@ -114,6 +114,7 @@ app.use("/api/admin", require("./routes/admin.routes"));
 app.use("/api/plan", require("./routes/plan.routes"));
 app.use("/api/channel", require("./routes/channel.routes"));
 app.use("/api/coupon", require("./routes/coupon.routes"));
+app.use("/api/invoice", require("./routes/invoice.routes"));
 
 /* -----------------------------
    HEALTH CHECK

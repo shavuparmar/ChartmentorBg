@@ -85,43 +85,15 @@ const processSuccessfulPayment = async (payment, merchantTransactionId, app) => 
   // Generate invoice
   try {
     const invoiceNumber = `INV-${Date.now()}`;
-    const newInvoice = await prisma.invoice.create({
+    await prisma.invoice.create({
       data: {
         invoiceNumber,
         paymentId: updatedPayment.id,
         userId: updatedPayment.userId,
-        amount: updatedPayment.amount
+        amount: updatedPayment.amount,
+        pdfUrl: `/api/invoice/${invoiceNumber}/download`
       }
     });
-
-    const invoiceData = {
-      invoiceNumber,
-      date: new Date(),
-      paymentId: merchantTransactionId || updatedPayment.id,
-      studentName: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      amount: updatedPayment.amount
-    };
-
-    const path = require('path');
-    const { generateInvoicePDF } = require('../services/invoice.service');
-    // Need to ensure public/invoices dir exists
-    const fs = require('fs');
-    const publicDir = path.join(__dirname, '..', '..', 'public', 'invoices');
-    if (!fs.existsSync(publicDir)) {
-      fs.mkdirSync(publicDir, { recursive: true });
-    }
-    
-    const pdfPath = path.join(publicDir, `${invoiceNumber}.pdf`);
-    
-    if (generateInvoicePDF) {
-      await generateInvoicePDF(invoiceData, pdfPath).catch(err => console.error("PDF generation failed:", err));
-      
-      await prisma.invoice.update({
-        where: { id: newInvoice.id },
-        data: { pdfUrl: `/invoices/${invoiceNumber}.pdf` }
-      });
-    }
   } catch(e) {
     console.error("Invoice generation error:", e);
   }

@@ -2,18 +2,12 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
-const generateInvoicePDF = (invoiceData, filePath) => {
+const streamInvoicePDF = (invoiceData, res) => {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
       
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)){
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      const stream = fs.createWriteStream(filePath);
-      doc.pipe(stream);
+      doc.pipe(res);
 
       // Header
       doc.fillColor('#000000')
@@ -64,10 +58,10 @@ const generateInvoicePDF = (invoiceData, filePath) => {
 
       doc.end();
 
-      stream.on('finish', () => {
-        resolve(filePath);
+      res.on('finish', () => {
+        resolve();
       });
-      stream.on('error', (err) => {
+      res.on('error', (err) => {
         reject(err);
       });
     } catch (error) {
@@ -76,4 +70,4 @@ const generateInvoicePDF = (invoiceData, filePath) => {
   });
 };
 
-module.exports = { generateInvoicePDF };
+module.exports = { streamInvoicePDF };

@@ -142,6 +142,13 @@ const getProfile = async (req, res) => {
       currentPlan = await prisma.plan.findUnique({ where: { id: user.membership.planId } });
     }
 
+    if (user && user.invoices) {
+      user.invoices = user.invoices.map(inv => ({
+        ...inv,
+        pdfUrl: `/api/invoice/${inv.invoiceNumber}/download`
+      }));
+    }
+
     res.json({ success: true, data: { ...user, currentPlan } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

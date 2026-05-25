@@ -43,7 +43,15 @@ const getPayments = async (req, res) => {
       include: { user: true, invoice: true },
       orderBy: { createdAt: 'desc' }
     });
-    res.json({ success: true, data: payments });
+
+    const updatedPayments = payments.map(p => {
+      if (p.invoice) {
+        p.invoice.pdfUrl = `/api/invoice/${p.invoice.invoiceNumber}/download`;
+      }
+      return p;
+    });
+
+    res.json({ success: true, data: updatedPayments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
