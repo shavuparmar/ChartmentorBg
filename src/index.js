@@ -48,7 +48,7 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
   "https://chartmentor.vercel.app",
   "http://localhost:5173",
-  "https://www.chartmentors.in/"
+  "https://www.chartmentors.in"
 ].filter(Boolean);
 
 app.use(
