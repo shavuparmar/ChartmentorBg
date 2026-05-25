@@ -11,7 +11,7 @@ router.post('/webhook', handleWebhook);
 // If gateway redirects user to webhook URL via GET
 router.get('/webhook', (req, res) => {
     const orderId = req.query.client_txn_id || req.query.orderId || req.query.merchantOrderId || '';
-    res.redirect(`${process.env.FRONTEND_URL}/payment/status?orderId=${orderId}`);
+    res.redirect(`${process.env.FRONTEND_URL}/payment/status?cmOrderId=${orderId}`);
 });
 
 module.exports = router;

@@ -200,7 +200,7 @@ const createOrder = async (req, res) => {
         customer_name: `${user.firstName} ${user.lastName}`.substring(0, 50),
         customer_email: user.email,
         customer_mobile: "9999999999",
-        redirect_url: `${process.env.FRONTEND_URL}/payment/status?orderId=${merchantOrderId}`,
+        redirect_url: `${process.env.FRONTEND_URL}/payment/status?cmOrderId=${merchantOrderId}`,
         udf1: user.id,
         udf2: planId,
         udf3: "ChartMentor"
