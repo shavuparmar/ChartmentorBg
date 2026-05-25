@@ -112,6 +112,8 @@ app.use("/api/payment", require("./routes/payment.routes"));
 app.use("/api/student", require("./routes/student.routes"));
 app.use("/api/admin", require("./routes/admin.routes"));
 app.use("/api/plan", require("./routes/plan.routes"));
+app.use("/api/channel", require("./routes/channel.routes"));
+app.use("/api/coupon", require("./routes/coupon.routes"));
 
 /* -----------------------------
    HEALTH CHECK

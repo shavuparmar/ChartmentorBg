@@ -6,13 +6,15 @@ const {
   getSettings,
   createSupportTicket,
   getSupportTickets,
-  replySupportTicket
+  replySupportTicket,
+  getProfile
 } = require('../controllers/student.controller');
 const { authMiddleware } = require('../middlewares/auth');
 const router = express.Router();
 
 router.use(authMiddleware);
 
+router.get('/profile', getProfile);
 router.get('/dashboard', getDashboard);
 router.get('/notifications', getNotifications);
 router.put('/notifications/:id/read', markNotificationRead);

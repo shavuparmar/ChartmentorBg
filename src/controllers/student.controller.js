@@ -121,6 +121,33 @@ const markNotificationRead = async (req, res) => {
   }
 };
 
+const getProfile = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        membership: true,
+        payments: {
+          include: { plan: true, coupon: true },
+          orderBy: { createdAt: 'desc' }
+        },
+        invoices: {
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    });
+
+    let currentPlan = null;
+    if (user && user.membership && user.membership.planId) {
+      currentPlan = await prisma.plan.findUnique({ where: { id: user.membership.planId } });
+    }
+
+    res.json({ success: true, data: { ...user, currentPlan } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getDashboard,
   getNotifications,
@@ -128,5 +155,6 @@ module.exports = {
   getSettings,
   createSupportTicket,
   getSupportTickets,
-  replySupportTicket
+  replySupportTicket,
+  getProfile
 };

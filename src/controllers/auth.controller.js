@@ -242,7 +242,7 @@ const forgotPassword = async (req, res) => {
       data: { resetToken: hashedResetToken, resetTokenExpiry }
     });
 
-    const resetLink = `${process.env.FRONTEND_URL}/student/reset-password?token=${resetToken}`;
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
     await sendPasswordResetEmail(email, resetLink);
 
     res.json({ success: true, message: 'If that email is registered, we have sent a password reset link.' });
@@ -285,4 +285,31 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, resendOTP, verifyEmail, login, adminLogin, getMe, forgotPassword, resetPassword };
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Incorrect current password' });
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword }
+    });
+
+    res.json({ success: true, message: 'Password successfully updated' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = { register, resendOTP, verifyEmail, login, adminLogin, getMe, forgotPassword, resetPassword, changePassword };
