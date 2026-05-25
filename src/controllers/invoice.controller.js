@@ -33,7 +33,8 @@ const downloadInvoice = async (req, res) => {
     };
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=${invoiceId}.pdf`);
+    res.setHeader("Content-Disposition", `attachment; filename="${invoiceId}.pdf"`);
+    res.setHeader("Cache-Control", "no-store");
 
     await streamInvoicePDF(invoiceData, res);
 
