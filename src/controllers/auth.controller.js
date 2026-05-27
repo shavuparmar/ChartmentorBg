@@ -30,7 +30,9 @@ const register = async (req, res) => {
     const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
     const otpExpiry = new Date(Date.now() + 15 * 60000); // 15 mins
 
-    if (!user) {
+    const isNewUser = !user;
+
+    if (isNewUser) {
       user = await prisma.user.create({
         data: {
           firstName,
@@ -54,7 +56,14 @@ const register = async (req, res) => {
       });
     }
 
-    await sendOTPEmail(email, firstName, otp);
+    try {
+      await sendOTPEmail(email, firstName, otp);
+    } catch (emailError) {
+      if (isNewUser) {
+        await prisma.user.delete({ where: { email } });
+      }
+      return res.status(500).json({ success: false, message: 'Failed to send OTP email. Please check your email address and try again.' });
+    }
     
     res.status(201).json({
       success: true,
@@ -109,7 +118,14 @@ const resendOTP = async (req, res) => {
 
 const verifyEmail = async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { email } = req.body;
+    let { otp } = req.body;
+    
+    if (!otp) {
+      return res.status(400).json({ success: false, message: 'OTP is required' });
+    }
+    
+    otp = String(otp).trim();
     
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
@@ -122,7 +138,7 @@ const verifyEmail = async (req, res) => {
 
     const hashedInputOTP = crypto.createHash('sha256').update(otp).digest('hex');
 
-    if (user.resetToken !== hashedInputOTP || new Date() > user.resetTokenExpiry) {
+    if (user.resetToken !== hashedInputOTP || !user.resetTokenExpiry || Date.now() > user.resetTokenExpiry.getTime()) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 

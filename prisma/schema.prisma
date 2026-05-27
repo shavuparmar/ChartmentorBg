@@ -141,6 +141,10 @@ model Plan {
   endDate        DateTime?
   isActive       Boolean  @default(true)
   isVisible      Boolean  @default(true)
+  discountType   String?  // PERCENTAGE or FIXED
+  discountValue  Float?
+  offerLabel     String?
+  isFeatured     Boolean  @default(false)
   description    String?
   features       String?  // JSON string or comma-separated
   membershipType String?

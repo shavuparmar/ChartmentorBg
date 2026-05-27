@@ -116,7 +116,23 @@ const createOrder = async (req, res) => {
     const plan = await prisma.plan.findUnique({ where: { id: planId } });
     if (!plan) return res.status(404).json({ success: false, message: 'Plan not found.' });
     
-    let amountToPay = plan.discountPrice ? plan.discountPrice : plan.price;
+    // Prevent duplicate spam requests within the last 30 seconds
+    const recentPayment = await prisma.payment.findFirst({
+      where: {
+        userId: req.user.id,
+        planId: planId,
+        status: 'PENDING',
+        createdAt: {
+          gt: new Date(Date.now() - 30 * 1000)
+        }
+      }
+    });
+
+    if (recentPayment) {
+       return res.status(429).json({ success: false, message: 'A payment request is already pending. Please wait a moment before trying again.' });
+    }
+    
+    let amountToPay = plan.discountPrice !== null && plan.discountPrice !== undefined ? plan.discountPrice : plan.price;
     let validCouponId = null;
 
     if (couponCode) {
@@ -141,6 +157,34 @@ const createOrder = async (req, res) => {
     }
 
     const merchantOrderId = `upi_order_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    
+    // Zero-Amount Bypass (100% discount)
+    if (amountToPay === 0) {
+       const payment = await prisma.payment.create({
+         data: {
+           userId: req.user.id,
+           merchantOrderId: merchantOrderId,
+           merchantTransactionId: 'FREE_PLAN_' + merchantOrderId,
+           amount: 0,
+           planId: planId,
+           couponId: validCouponId,
+           status: "SUCCESS"
+         },
+         include: { plan: true }
+       });
+       
+       await processSuccessfulPayment(payment, payment.merchantTransactionId, req.app);
+       
+       return res.json({
+         success: true,
+         message: 'Plan activated successfully for free.',
+         data: {
+           id: merchantOrderId,
+           amount: 0,
+           paymentUrl: `${process.env.FRONTEND_URL}/payment/status?cmOrderId=${merchantOrderId}&status=SUCCESS`
+         }
+       });
+    }
     
     // Save pending payment in DB FIRST (webhook-first architecture relies on this)
     const payment = await prisma.payment.create({

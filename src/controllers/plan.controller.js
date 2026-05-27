@@ -9,7 +9,22 @@ const createPlan = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Database schema is out of sync. Please stop the server, run `npx prisma db push` and `npx prisma generate`, then restart.' });
     }
 
-    const { name, price, description, features, discountPrice, durationDays, startDate, endDate, isActive, isVisible, membershipType } = req.body;
+    const { name, price, description, features, durationDays, startDate, endDate, isActive, isVisible, membershipType, discountType, discountValue, offerLabel, isFeatured } = req.body;
+    let { discountPrice } = req.body;
+
+    const parsedPrice = parseFloat(price);
+    
+    // Calculate precise discountPrice if discount logic is provided
+    if (discountType === 'PERCENTAGE' && discountValue) {
+      discountPrice = parsedPrice - (parsedPrice * parseFloat(discountValue) / 100);
+    } else if (discountType === 'FIXED' && discountValue) {
+      discountPrice = parsedPrice - parseFloat(discountValue);
+    }
+    
+    if (discountPrice !== undefined && discountPrice !== null) {
+      discountPrice = parseFloat(discountPrice);
+      if (discountPrice < 0) discountPrice = 0;
+    }
     
     if (startDate) {
       const start = new Date(startDate);
@@ -28,8 +43,12 @@ const createPlan = async (req, res) => {
     const plan = await prisma.plan.create({
       data: { 
         name, 
-        price: parseFloat(price), 
-        discountPrice: discountPrice ? parseFloat(discountPrice) : null,
+        price: parsedPrice, 
+        discountPrice: discountPrice !== undefined ? discountPrice : null,
+        discountType: discountType || null,
+        discountValue: discountValue ? parseFloat(discountValue) : null,
+        offerLabel: offerLabel || null,
+        isFeatured: isFeatured !== undefined ? isFeatured : false,
         durationDays: durationDays ? parseInt(durationDays) : null,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
@@ -69,11 +88,29 @@ const updatePlan = async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Forbidden' });
     
     const { id } = req.params;
-    const { name, price, description, features, discountPrice, durationDays, startDate, endDate, isActive, isVisible, membershipType } = req.body;
+    const { name, price, description, features, durationDays, startDate, endDate, isActive, isVisible, membershipType, discountType, discountValue, offerLabel, isFeatured } = req.body;
+    let { discountPrice } = req.body;
     
     const existingPlan = await prisma.plan.findUnique({ where: { id } });
     if (!existingPlan) return res.status(404).json({ success: false, message: 'Course not found' });
     
+    let parsedPrice = price !== undefined ? parseFloat(price) : existingPlan.price;
+    let currentDiscountType = discountType !== undefined ? discountType : existingPlan.discountType;
+    let currentDiscountValue = discountValue !== undefined ? parseFloat(discountValue) : existingPlan.discountValue;
+
+    if (discountType !== undefined || discountValue !== undefined || price !== undefined) {
+       if (currentDiscountType === 'PERCENTAGE' && currentDiscountValue) {
+          discountPrice = parsedPrice - (parsedPrice * currentDiscountValue / 100);
+       } else if (currentDiscountType === 'FIXED' && currentDiscountValue) {
+          discountPrice = parsedPrice - currentDiscountValue;
+       }
+    }
+    
+    if (discountPrice !== undefined && discountPrice !== null) {
+      discountPrice = parseFloat(discountPrice);
+      if (discountPrice < 0) discountPrice = 0;
+    }
+
     const finalStartDate = startDate !== undefined ? (startDate ? new Date(startDate) : null) : existingPlan.startDate;
     const finalEndDate = endDate !== undefined ? (endDate ? new Date(endDate) : null) : existingPlan.endDate;
     
@@ -102,6 +139,10 @@ const updatePlan = async (req, res) => {
     if (description !== undefined) dataToUpdate.description = description;
     if (features !== undefined) dataToUpdate.features = JSON.stringify(features);
     if (discountPrice !== undefined) dataToUpdate.discountPrice = discountPrice ? parseFloat(discountPrice) : null;
+    if (discountType !== undefined) dataToUpdate.discountType = discountType || null;
+    if (discountValue !== undefined) dataToUpdate.discountValue = discountValue ? parseFloat(discountValue) : null;
+    if (offerLabel !== undefined) dataToUpdate.offerLabel = offerLabel || null;
+    if (isFeatured !== undefined) dataToUpdate.isFeatured = isFeatured;
     if (durationDays !== undefined) dataToUpdate.durationDays = durationDays ? parseInt(durationDays) : null;
     if (startDate !== undefined) dataToUpdate.startDate = startDate ? new Date(startDate) : null;
     if (endDate !== undefined) dataToUpdate.endDate = endDate ? new Date(endDate) : null;
